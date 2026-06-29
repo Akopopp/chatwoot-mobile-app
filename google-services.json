@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "812555020374",
+    "project_id": "chatssync",
+    "storage_bucket": "chatssync.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:812555020374:android:ca9f7c65027f5221cc33f7",
+        "android_client_info": {
+          "package_name": "online.chatssync.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBKwR1vnHUOj7OCwjWEZm2mVWwgJM2O_xw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
