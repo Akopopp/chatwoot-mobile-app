@@ -8,14 +8,32 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_CHATWOOT_BASE_URL": "https://app.chatssync.online",
+        "EXPO_PUBLIC_MINIMUM_CHATWOOT_VERSION": "4.1.0",
+        "EXPO_PUBLIC_APP_SLUG": "chatssync-mobile",
+        "EXPO_PUBLIC_ANDROID_GOOGLE_SERVICES_FILE": "./google-services.json"
+      }
+    },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_CHATWOOT_BASE_URL": "https://app.chatssync.online",
+        "EXPO_PUBLIC_MINIMUM_CHATWOOT_VERSION": "4.1.0",
+        "EXPO_PUBLIC_APP_SLUG": "chatssync-mobile",
+        "EXPO_PUBLIC_ANDROID_GOOGLE_SERVICES_FILE": "./google-services.json"
+      }
     }
   },
   "submit": {
     "production": {
       "android": {
-        "track": "internal" // (enum: production, beta, alpha, internal)
+        "track": "internal"
       }
     }
   }
