@@ -1,3 +1,4 @@
+import { registerRootComponent } from 'expo';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   SafeAreaView,
@@ -6,41 +7,33 @@ import {
   View,
   ActivityIndicator,
   BackHandler,
-  Platform,
-  RefreshControl,
-  ScrollView,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import messaging from '@react-native-firebase/messaging';
 
 const SITE_URL = 'https://app.chatssync.online';
 
-export default function App() {
+function App() {
   const webRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loading, setLoading] = useState(true);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
 
-  // Ask notification permission + get FCM token
   useEffect(() => {
     (async () => {
       try {
         await messaging().requestPermission();
         const token = await messaging().getToken();
         if (token) setFcmToken(token);
-      } catch (e) {
-        // ignore – app still works without push
-      }
+      } catch (e) {}
     })();
 
-    // When a notification is tapped and app opens, reload site
     const unsub = messaging().onNotificationOpenedApp(() => {
       webRef.current?.reload();
     });
     return unsub;
   }, []);
 
-  // Android hardware back button -> WebView back
   useEffect(() => {
     const onBack = () => {
       if (canGoBack) {
@@ -53,8 +46,6 @@ export default function App() {
     return () => sub.remove();
   }, [canGoBack]);
 
-  // JS injected into the website: hand the FCM token to the page so
-  // Chatwoot's web app can register it with the server.
   const injectedJS = fcmToken
     ? `
       (function() {
@@ -84,7 +75,6 @@ export default function App() {
           domStorageEnabled={true}
           sharedCookiesEnabled={true}
           thirdPartyCookiesEnabled={true}
-          allowsBackForwardNavigationGestures={true}
           pullToRefreshEnabled={true}
           setSupportMultipleWindows={false}
           mediaPlaybackRequiresUserAction={false}
@@ -114,3 +104,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.9)',
   },
 });
+
+registerRootComponent(App);
+
+export default App;
