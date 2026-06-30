@@ -1,195 +1,124 @@
-<script>
-import { mapGetters } from 'vuex';
-import LoadingState from './components/widgets/LoadingState.vue';
-import NetworkNotification from './components/NetworkNotification.vue';
-import UpdateBanner from './components/app/UpdateBanner.vue';
-import StatusBanner from './components/app/StatusBanner.vue';
-import PaymentPendingBanner from './components/app/PaymentPendingBanner.vue';
-import PendingEmailVerificationBanner from './components/app/PendingEmailVerificationBanner.vue';
-import PlanExpiryBanner from './components/app/PlanExpiryBanner.vue';
-import vueActionCable from './helper/actionCable';
-import { useRouter } from 'vue-router';
-import { useStore } from 'dashboard/composables/store';
-import WootSnackbarBox from './components/SnackbarContainer.vue';
-import { setColorTheme } from './helper/themeHelper';
-import { isOnOnboardingView } from 'v3/helpers/RouteHelper';
-import { useAccount } from 'dashboard/composables/useAccount';
-import { useFontSize } from 'dashboard/composables/useFontSize';
+import { registerRootComponent } from 'expo';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  registerSubscription,
-  verifyServiceWorkerExistence,
-} from './helper/pushHelper';
-import ReconnectService from 'dashboard/helper/ReconnectService';
-import { useUISettings } from 'dashboard/composables/useUISettings';
-export default {
-  name: 'App',
-  components: {
-    LoadingState,
-    NetworkNotification,
-    UpdateBanner,
-    StatusBanner,
-    PaymentPendingBanner,
-    WootSnackbarBox,
-    PendingEmailVerificationBanner,
-    PlanExpiryBanner,
-  },
-  setup() {
-    const router = useRouter();
-    const store = useStore();
-    const { accountId } = useAccount();
-    // Use the font size composable (it automatically sets up the watcher)
-    const { currentFontSize } = useFontSize();
-    const { uiSettings } = useUISettings();
-    return {
-      router,
-      store,
-      currentAccountId: accountId,
-      currentFontSize,
-      uiSettings,
-    };
-  },
-  data() {
-    return {
-      latestChatwootVersion: null,
-      reconnectService: null,
-    };
-  },
-  computed: {
-    ...mapGetters({
-      getAccount: 'accounts/getAccount',
-      isRTL: 'accounts/isRTL',
-      currentUser: 'getCurrentUser',
-      authUIFlags: 'getAuthUIFlags',
-    }),
-    hideOnOnboardingView() {
-      return !isOnOnboardingView(this.$route);
-    },
-  },
-  watch: {
-    currentAccountId: {
-      immediate: true,
-      handler() {
-        if (this.currentAccountId) {
-          this.initializeAccount();
-        }
-      },
-    },
-  },
-  mounted() {
-    this.initializeColorTheme();
-    this.listenToThemeChanges();
-    // If user locale is set, use it; otherwise use account locale
-    this.setLocale(
-      this.uiSettings?.locale || window.chatwootConfig.selectedLocale
-    );
-  },
-  unmounted() {
-    if (this.reconnectService) {
-      this.reconnectService.disconnect();
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  View,
+  ActivityIndicator,
+  BackHandler,
+} from 'react-native';
+import { WebView } from 'react-native-webview';
+import messaging from '@react-native-firebase/messaging';
+
+const SITE_URL = 'https://app.chatssync.online';
+
+function App() {
+  const webRef = useRef<WebView>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [firstLoadDone, setFirstLoadDone] = useState(false);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+
+  // Get FCM permission + token
+  useEffect(() => {
+    (async () => {
+      try {
+        await messaging().requestPermission();
+        const token = await messaging().getToken();
+        if (token) setFcmToken(token);
+      } catch (e) {}
+    })();
+
+    const unsub = messaging().onNotificationOpenedApp(() => {
+      webRef.current?.reload();
+    });
+    return unsub;
+  }, []);
+
+  // Script that hands the token to the website
+  const buildInject = (token: string) => `
+    (function() {
+      try {
+        window.CHATSSYNC_FCM_TOKEN = '${token}';
+        window.localStorage.setItem('chatssync_fcm_token', '${token}');
+        window.dispatchEvent(new CustomEvent('chatssync-fcm-token', { detail: '${token}' }));
+      } catch (e) {}
+      true;
+    })();
+  `;
+
+  // KEY FIX: whenever token arrives, push it into the already-loaded page
+  useEffect(() => {
+    if (fcmToken && webRef.current) {
+      webRef.current.injectJavaScript(buildInject(fcmToken));
     }
-  },
-  methods: {
-    initializeColorTheme() {
-      setColorTheme(window.matchMedia('(prefers-color-scheme: dark)').matches);
-    },
-    listenToThemeChanges() {
-      const mql = window.matchMedia('(prefers-color-scheme: dark)');
-      mql.onchange = e => setColorTheme(e.matches);
-    },
-    setLocale(locale) {
-      if (locale) {
-        this.$root.$i18n.locale = locale;
+  }, [fcmToken]);
+
+  // Android hardware back button
+  useEffect(() => {
+    const onBack = () => {
+      if (canGoBack) {
+        webRef.current?.goBack();
+        return true;
       }
-    },
-    async initializeAccount() {
-      await this.$store.dispatch('accounts/get');
-      this.$store.dispatch('setActiveAccount', {
-        accountId: this.currentAccountId,
-      });
-      const account = this.getAccount(this.currentAccountId);
-      const { locale, latest_chatwoot_version: latestChatwootVersion } =
-        account;
-      const { pubsub_token: pubsubToken } = this.currentUser || {};
-      // If user locale is set, use it; otherwise use account locale
-      this.setLocale(this.uiSettings?.locale || locale);
-      this.latestChatwootVersion = latestChatwootVersion;
-      vueActionCable.init(this.store, pubsubToken);
-      this.reconnectService = new ReconnectService(this.store, this.router);
-      window.reconnectService = this.reconnectService;
-      verifyServiceWorkerExistence(registration =>
-        registration.pushManager.getSubscription().then(subscription => {
-          if (subscription) {
-            registerSubscription();
-          }
-        })
-      );
-      this.registerFcmToken();
-    },
-    registerFcmToken() {
-      const sendToken = token => {
-        if (!token) return;
-        if (window.__chatssyncFcmSent === token) return;
-        window.__chatssyncFcmSent = token;
-        fetch('/api/v1/notification_subscriptions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            api_access_token: this.currentUser?.access_token || '',
-          },
-          body: JSON.stringify({
-            notification_subscription: {
-              identifier: token,
-              subscription_type: 'fcm',
-              subscription_attributes: { push_token: token },
-            },
-          }),
-        }).catch(() => {});
-      };
-      const existing =
-        window.CHATSSYNC_FCM_TOKEN ||
-        window.localStorage.getItem('chatssync_fcm_token');
-      if (existing) sendToken(existing);
-      window.addEventListener('chatssync-fcm-token', e =>
-        sendToken(e.detail)
-      );
-    },
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => sub.remove();
+  }, [canGoBack]);
+
+  // Also re-inject on every page load (covers login navigation / reloads)
+  const onLoadEnd = () => {
+    setFirstLoadDone(true);
+    if (fcmToken && webRef.current) {
+      webRef.current.injectJavaScript(buildInject(fcmToken));
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <View style={styles.container}>
+        <WebView
+          ref={webRef}
+          source={{ uri: SITE_URL }}
+          originWhitelist={['*']}
+          onLoadEnd={onLoadEnd}
+          onNavigationStateChange={(nav) => setCanGoBack(nav.canGoBack)}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          sharedCookiesEnabled={true}
+          thirdPartyCookiesEnabled={true}
+          pullToRefreshEnabled={true}
+          setSupportMultipleWindows={false}
+          mediaPlaybackRequiresUserAction={false}
+          style={styles.webview}
+        />
+        {!firstLoadDone && (
+          <View style={styles.loader}>
+            <ActivityIndicator size="large" color="#2F6BFF" />
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#ffffff' },
+  webview: { flex: 1, backgroundColor: '#ffffff' },
+  loader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
   },
-};
-</script>
-<template>
-  <div
-    v-if="!authUIFlags.isFetching"
-    id="app"
-    class="flex flex-col w-full h-screen min-h-0 bg-n-background"
-    :dir="isRTL ? 'rtl' : 'ltr'"
-  >
-    <UpdateBanner :latest-chatwoot-version="latestChatwootVersion" />
-    <StatusBanner />
-    <template v-if="currentAccountId">
-      <PendingEmailVerificationBanner v-if="hideOnOnboardingView" />
-      <PaymentPendingBanner v-if="hideOnOnboardingView" />
-      <PlanExpiryBanner v-if="hideOnOnboardingView" />
-    </template>
-    <router-view v-slot="{ Component }">
-      <transition name="fade" mode="out-in">
-        <component :is="Component" />
-      </transition>
-    </router-view>
-    <WootSnackbarBox />
-    <NetworkNotification />
-  </div>
-  <LoadingState v-else />
-</template>
-<style lang="scss">
-@import './assets/scss/app';
-.v-popper--theme-tooltip .v-popper__inner {
-  background: black !important;
-  font-size: 0.75rem;
-  padding: 4px 8px !important;
-  border-radius: 6px;
-  font-weight: 400;
-}
-.v-popper--theme-tooltip .v-popper__arrow-container {
-  display: none;
-}
-</style>
+});
+
+registerRootComponent(App);
+
+export default App;
