@@ -19,6 +19,7 @@ function App() {
   const [firstLoadDone, setFirstLoadDone] = useState(false);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
 
+  // Get FCM permission + token
   useEffect(() => {
     (async () => {
       try {
@@ -34,6 +35,26 @@ function App() {
     return unsub;
   }, []);
 
+  // Script that hands the token to the website
+  const buildInject = (token: string) => `
+    (function() {
+      try {
+        window.CHATSSYNC_FCM_TOKEN = '${token}';
+        window.localStorage.setItem('chatssync_fcm_token', '${token}');
+        window.dispatchEvent(new CustomEvent('chatssync-fcm-token', { detail: '${token}' }));
+      } catch (e) {}
+      true;
+    })();
+  `;
+
+  // KEY FIX: whenever token arrives, push it into the already-loaded page
+  useEffect(() => {
+    if (fcmToken && webRef.current) {
+      webRef.current.injectJavaScript(buildInject(fcmToken));
+    }
+  }, [fcmToken]);
+
+  // Android hardware back button
   useEffect(() => {
     const onBack = () => {
       if (canGoBack) {
@@ -46,18 +67,13 @@ function App() {
     return () => sub.remove();
   }, [canGoBack]);
 
-  const injectedJS = fcmToken
-    ? `
-      (function() {
-        try {
-          window.CHATSSYNC_FCM_TOKEN = '${fcmToken}';
-          window.localStorage.setItem('chatssync_fcm_token', '${fcmToken}');
-          window.dispatchEvent(new CustomEvent('chatssync-fcm-token', { detail: '${fcmToken}' }));
-        } catch (e) {}
-        true;
-      })();
-    `
-    : 'true;';
+  // Also re-inject on every page load (covers login navigation / reloads)
+  const onLoadEnd = () => {
+    setFirstLoadDone(true);
+    if (fcmToken && webRef.current) {
+      webRef.current.injectJavaScript(buildInject(fcmToken));
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -67,9 +83,8 @@ function App() {
           ref={webRef}
           source={{ uri: SITE_URL }}
           originWhitelist={['*']}
-          onLoadEnd={() => setFirstLoadDone(true)}
+          onLoadEnd={onLoadEnd}
           onNavigationStateChange={(nav) => setCanGoBack(nav.canGoBack)}
-          injectedJavaScript={injectedJS}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           sharedCookiesEnabled={true}
