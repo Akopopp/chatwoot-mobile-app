@@ -16,7 +16,7 @@ const SITE_URL = 'https://app.chatssync.online';
 function App() {
   const webRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [firstLoadDone, setFirstLoadDone] = useState(false);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,8 +67,7 @@ function App() {
           ref={webRef}
           source={{ uri: SITE_URL }}
           originWhitelist={['*']}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
+          onLoadEnd={() => setFirstLoadDone(true)}
           onNavigationStateChange={(nav) => setCanGoBack(nav.canGoBack)}
           injectedJavaScript={injectedJS}
           javaScriptEnabled={true}
@@ -80,8 +79,8 @@ function App() {
           mediaPlaybackRequiresUserAction={false}
           style={styles.webview}
         />
-        {loading && (
-          <View style={styles.loader} pointerEvents="none">
+        {!firstLoadDone && (
+          <View style={styles.loader}>
             <ActivityIndicator size="large" color="#2F6BFF" />
           </View>
         )}
@@ -101,7 +100,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#ffffff',
   },
 });
 
